@@ -11,6 +11,7 @@ Ollama mode POSTs to ``http://localhost:11434/api/chat``; ``requests`` and
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -67,9 +68,13 @@ class AgentRunner:
         ollama_model: str | None = None,
         ollama_url: str = OLLAMA_URL,
         max_turns: int = 8,
-        timeout: float = 60.0,
+        timeout: float | None = None,
         ollama_transport: str = "requests",
     ):
+        # CPU-only Ollama hosts can take minutes per turn, so the default is generous
+        # and overridable via AGENTGATE_OLLAMA_TIMEOUT (seconds).
+        if timeout is None:
+            timeout = float(os.environ.get("AGENTGATE_OLLAMA_TIMEOUT", "600"))
         if mode not in VALID_MODES:
             raise ValueError(f"Invalid mode {mode!r}; expected one of {VALID_MODES}")
         if ollama_transport not in VALID_TRANSPORTS:
