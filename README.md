@@ -23,3 +23,5 @@ the attack suite was run against any agent version.
 Evidence packs *support evidence for* EU AI Act Articles 12, 15, 19 and
 Annex IV, NIST AI RMF, and ISO/IEC 42001. This is not legal advice or
 certification.
+
+## Foot Note
