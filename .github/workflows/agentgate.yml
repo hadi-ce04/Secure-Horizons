@@ -1,0 +1,117 @@
+name: AgentGate release gate
+
+# Runs the gate on every pull request that touches an agent configuration, the
+# attack suite, or the gate itself. The job fails (exit 1) on BLOCK and is
+# marked "needs review" (exit 2) when the intervals are too wide to decide;
+# REVIEW can only be cleared by a signed human override recorded in the ledger.
+#
+# Offline mode runs on every PR with no secrets. The real-model job runs only
+# when AWS credentials are configured as repository secrets, so forks and
+# first-time contributors still get a deterministic check.
+
+on:
+  pull_request:
+    paths:
+      - "configs/**"
+      - "attacks/**"
+      - "agent/**"
+      - "gate/**"
+      - "ledger/**"
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Candidate config to gate"
+        default: "configs/v2.yaml"
+      trials:
+        description: "Trials per attack"
+        default: "20"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate-offline:
+    name: Gate (offline deterministic)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [configs/v2.yaml, configs/v3.yaml, configs/v4.yaml, configs/v5.yaml, configs/v6.yaml, configs/v7.yaml, configs/v8.yaml]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests -q
+      - name: Initialise an ephemeral ledger for this run
+        run: |
+          mv ledger/chain.jsonl ledger/chain.committed.jsonl
+          python cli.py init
+      - name: Gate ${{ matrix.config }}
+        id: gate
+        continue-on-error: true
+        run: |
+          set +e
+          python cli.py check --config "${{ matrix.config }}" --mode offline --trials 10 | tee gate.txt
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+      - name: Verify ledger
+        run: python cli.py verify
+      - name: Evidence pack
+        run: python cli.py pack --config "${{ matrix.config }}" --mode offline --trials 10
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ strategy.job-index }}
+          path: |
+            gate.txt
+            ledger/chain.jsonl
+            evidence/packs/**
+      - name: Fail on BLOCK, flag REVIEW
+        run: |
+          case "${{ steps.gate.outputs.exit }}" in
+            0) echo "ALLOW";;
+            1) echo "::error::BLOCK: ${{ matrix.config }} regresses against the baseline"; exit 1;;
+            2) echo "::warning::REVIEW: intervals too wide; a signed override is required"; exit 0;;
+            *) echo "::error::gate error"; exit 1;;
+          esac
+
+  gate-bedrock:
+    name: Gate (real model via Amazon Bedrock)
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: bedrock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Initialise an ephemeral ledger for this run
+        run: |
+          mv ledger/chain.jsonl ledger/chain.committed.jsonl
+          python cli.py init
+      - name: Gate on the deployed model
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          set +e
+          python cli.py check --config "${{ inputs.config }}" --mode bedrock --trials "${{ inputs.trials }}" --concurrency 8 | tee gate.txt
+          code=$?
+          python cli.py pack --config "${{ inputs.config }}" --mode bedrock --trials "${{ inputs.trials }}"
+          python cli.py verify
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-bedrock
+          path: |
+            gate.txt
+            ledger/chain.jsonl
+            evidence/packs/**

@@ -53,12 +53,12 @@ class StatsTests(unittest.TestCase):
 class SuiteTests(unittest.TestCase):
     def test_suite(self):
         suite = load_suite()
-        self.assertEqual(len(suite), 10)
+        self.assertEqual(len(suite), 16)
         counts = {}
         for a in suite:
             counts[a["category"]] = counts.get(a["category"], 0) + 1
-        self.assertEqual(counts, {"goal_hijack": 3, "indirect_injection": 4, "exfil_evasion": 3})
-        self.assertEqual({a["channel"] for a in suite}, {"user", "email", "document"})
+        self.assertEqual(counts, {"goal_hijack": 3, "indirect_injection": 5, "exfil_evasion": 4, "tool_misuse": 4})
+        self.assertEqual({a["channel"] for a in suite}, {"user", "email", "document", "tool_description"})
         ex = next(a for a in suite if a["id"] == "EX-001")
         b64 = re.search(r"([A-Za-z0-9+/]{20,}={0,2})", ex["payload"]).group(1)
         self.assertIn("attacker@evil.example", base64.b64decode(b64).decode())
@@ -80,7 +80,7 @@ class RunSuiteTests(unittest.TestCase):
 
     def test_v1_and_v2(self):
         r1 = self._run(self.v1)
-        self.assertEqual(r1["n_trials"], 100)
+        self.assertEqual(r1["n_trials"], 160)
         for cat, s in r1["summary"]["categories"].items():
             self.assertEqual(s["successes"], 0, cat)
             self.assertLessEqual(s["ci_upper"], 0.15, cat)

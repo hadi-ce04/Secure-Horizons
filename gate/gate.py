@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 
 from agent.tools import DEFAULT_OUTBOX_LOG
-from gate.attribute import attribute
+from gate.attribute import attribute, interaction_summary
 from gate.config import load_config
 from gate.run import (
     DEFAULT_CACHE_DIR,
@@ -135,8 +135,13 @@ def run_check(
     cache_dir=DEFAULT_CACHE_DIR,
     latest_path=DEFAULT_LATEST_PATH,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    progress=None,
 ) -> dict:
-    """Run baseline and candidate, decide, attribute, log to the ledger, persist."""
+    """Run baseline and candidate, decide, attribute, log to the ledger, persist.
+
+    ``progress`` is forwarded to every ``run_suite`` call (baseline, candidate
+    and each attribution variant); see ``gate.run.run_suite_async``.
+    """
     ledger = ledger or get_default_ledger()
     baseline = load_config(baseline_path)
     candidate = load_config(candidate_path)
@@ -149,6 +154,7 @@ def run_check(
         ollama_model=ollama_model,
         cache_dir=cache_dir,
         outbox_log_path=outbox_log_path,
+        progress=progress,
     )
     base_result = run_suite(baseline, suite, **kwargs)
     if candidate.config_hash == baseline.config_hash:
@@ -164,6 +170,9 @@ def run_check(
         attr = {"changes": [], "rows": []}
     for row in attr["rows"]:
         row["variant_decision"] = decide(base_result["summary"], row["variant_summary"])["decision"]
+    attr["interaction"] = interaction_summary(
+        base_result["summary"]["overall"]["asr"], cand_result["summary"]["overall"]["asr"], attr["rows"]
+    )
 
     baseline_side = _side(baseline, base_result)
     candidate_side = _side(candidate, cand_result)
@@ -194,6 +203,7 @@ def run_check(
                 {"change_id": r["change_id"], "delta_overall": r["delta_overall"], "effect": r["effect"]}
                 for r in attr["rows"]
             ],
+            "interaction": attr["interaction"],
         },
     )
 

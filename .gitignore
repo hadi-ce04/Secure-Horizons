@@ -1,4 +1,5 @@
-.keys/
+.keys/*
+!.keys/public.pem
 cache/*.json
 __pycache__/
 agent/outbox.jsonl
@@ -6,3 +7,4 @@ ledger/*.lock
 .venv/
 evidence/packs/*
 !evidence/packs/.gitkeep
+.env

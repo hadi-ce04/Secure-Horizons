@@ -22,6 +22,7 @@ from agent.tools import DEFAULT_OUTBOX_LOG
 from gate.config import AgentConfig, load_config
 from gate.run import DEFAULT_CACHE_DIR, DEFAULT_CONCURRENCY, DEFAULT_TRIALS_PER_ATTACK, load_suite, run_suite
 from ledger.ledger import Ledger, get_default_ledger, parse_timestamp
+from monitor.sinks import emit_alerts
 
 DEFAULT_MAX_AGE_HOURS = 24.0
 DRIFT_THRESHOLD = 0.10
@@ -177,8 +178,10 @@ def run_monitor_once(
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
     now: datetime | None = None,
+    alert_jsonl=None,
+    alert_webhook: str | None = None,
 ) -> dict:
-    """Run one monitoring pass: staleness check, suite run, drift check, ledger logging."""
+    """Run one monitoring pass: staleness check, suite run, drift check, ledger logging, alert sinks."""
     ledger = ledger or get_default_ledger()
     config = load_config(config_path)
     alerts = check_staleness(config, max_age_hours=max_age_hours, now=now, ledger=ledger)
@@ -211,12 +214,15 @@ def run_monitor_once(
     )
     for alert in alerts:
         ledger.append("staleness_alert", dict(alert, monitor_run_entry_hash=entry["entry_hash"]))
+    sink_result = emit_alerts(alerts, monitor_entry_hash=entry["entry_hash"],
+                              jsonl_path=alert_jsonl, webhook_url=alert_webhook)
     return {
         "monitor_entry_hash": entry["entry_hash"],
         "monitor_index": entry["index"],
         "config": {"name": config.name, "path": config.path, "hash": config.config_hash},
         "summary": result["summary"],
         "alerts": alerts,
+        "sinks": sink_result,
     }
 
 
@@ -240,6 +246,12 @@ def run_monitor_loop(
         printer(format_run(res))
         for alert in res["alerts"]:
             printer(format_alert(alert))
+        sinks = res.get("sinks") or {}
+        if sinks.get("events"):
+            targets = [t for t in (sinks.get("jsonl"), sinks.get("webhook")) if t]
+            printer(f"forwarded {sinks['events']} alert(s) to: {', '.join(targets) if targets else 'no sink configured'}")
+        for err in sinks.get("errors", []):
+            printer(f"SINK ERROR: {err}")
         if iterations is not None and count >= iterations:
             break
         sleep(interval_seconds)

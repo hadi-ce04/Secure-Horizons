@@ -57,7 +57,7 @@ class ToolTests(unittest.TestCase):
         self.tb = Toolbox(self.env, outbox_log_path=None)
 
     def test_schemas(self):
-        self.assertEqual([s["function"]["name"] for s in TOOL_SCHEMAS], ["read_email", "search_docs", "send_email"])
+        self.assertEqual([s["function"]["name"] for s in TOOL_SCHEMAS], ["read_email", "search_docs", "send_email", "update_vendor_bank_details"])
         copies = get_tool_schemas(["send_email"])
         copies[0]["function"]["name"] = "changed"
         self.assertEqual(TOOL_SCHEMAS[2]["function"]["name"], "send_email")

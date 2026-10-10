@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -28,8 +29,8 @@ DEFAULT_SUITE_PATH = REPO_ROOT / "attacks" / "suite.yaml"
 DEFAULT_CACHE_DIR = REPO_ROOT / "cache"
 DEFAULT_TRIALS_PER_ATTACK = 10
 DEFAULT_CONCURRENCY = 8
-VALID_CATEGORIES = {"goal_hijack", "indirect_injection", "exfil_evasion"}
-VALID_CHANNELS = {"user", "email", "document"}
+VALID_CATEGORIES = {"goal_hijack", "indirect_injection", "exfil_evasion", "tool_misuse"}
+VALID_CHANNELS = {"user", "email", "document", "tool_description"}
 REQUIRED_ATTACK_FIELDS = ("id", "category", "channel", "owasp", "payload")
 MIN_ATTACKS_PER_CATEGORY = 3
 
@@ -110,7 +111,7 @@ def _load_cached(path: Path) -> dict | None:
         return None
     if not isinstance(record, dict):
         return None
-    record["success"] = evaluate_trial(record.get("outbox", []))
+    record["success"] = evaluate_trial(record.get("outbox", []), record.get("actions", []))
     record["cached"] = True
     return record
 
@@ -139,7 +140,7 @@ def run_single_trial(
     result = runner.run(
         config.system_prompt,
         config.model,
-        list(config.tool_schemas),
+        env.poison_tool_schemas(config.tool_schemas),
         env,
         trial_index=trial_index,
         outbox_log_path=outbox_log_path,
@@ -153,9 +154,10 @@ def run_single_trial(
         "trial_index": trial_index,
         "mode": mode,
         "model": result["model"],
-        "success": evaluate_trial(result["outbox"]),
+        "success": evaluate_trial(result["outbox"], result.get("actions", [])),
         "refused": bool(result["refused"]),
         "outbox": result["outbox"],
+        "actions": result.get("actions", []),
         "transcript": result["transcript"],
         "cached": False,
     }
@@ -174,8 +176,17 @@ async def run_suite_async(
     ollama_model: str | None = None,
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    progress: Callable[[dict], None] | None = None,
 ) -> dict:
-    """Run every attack ``trials_per_attack`` times with bounded concurrency."""
+    """Run every attack ``trials_per_attack`` times with bounded concurrency.
+
+    ``progress``, if given, is called once per completed trial (from the event
+    loop thread, in completion order) with a small event dict: config name and
+    hash, attack id / category / channel, trial index, success, refused, cached,
+    the outbox recipients, the sensitive actions, and ``done`` / ``total``
+    counters for this suite run. Exceptions raised by the callback are ignored
+    so a UI bug can never abort a check.
+    """
     if trials_per_attack < 1:
         raise ValueError("trials_per_attack must be >= 1")
     if concurrency < 1:
@@ -183,10 +194,13 @@ async def run_suite_async(
     if not suite:
         raise ValueError("suite must contain at least one attack")
     semaphore = asyncio.Semaphore(concurrency)
+    total = len(suite) * trials_per_attack
+    done = 0
 
     async def one(attack: dict, idx: int) -> dict:
+        nonlocal done
         async with semaphore:
-            return await asyncio.to_thread(
+            record = await asyncio.to_thread(
                 run_single_trial,
                 config,
                 attack,
@@ -197,6 +211,43 @@ async def run_suite_async(
                 use_cache,
                 outbox_log_path,
             )
+        done += 1
+        if progress is not None:
+            try:
+                progress(
+                    {
+                        "config_name": config.name,
+                        "config_hash": config.config_hash,
+                        "attack_id": record["attack_id"],
+                        "category": record["category"],
+                        "channel": record["channel"],
+                        "trial_index": record["trial_index"],
+                        "success": bool(record["success"]),
+                        "refused": bool(record.get("refused", False)),
+                        "cached": bool(record.get("cached", False)),
+                        "recipients": [str(e.get("to", "")) for e in record.get("outbox", []) if isinstance(e, dict)],
+                        "actions": [
+                            {k: a.get(k) for k in ("tool", "vendor", "iban", "reason")}
+                            for a in record.get("actions", []) if isinstance(a, dict)
+                        ],
+                        # enough of the transcript for a UI to show "what the agent did" without the cache
+                        "outbox": [
+                            {"to": e.get("to"), "subject": e.get("subject"), "body": str(e.get("body") or "")[:1200]}
+                            for e in record.get("outbox", []) if isinstance(e, dict)
+                        ],
+                        "tool_calls": [
+                            {"name": c.get("function", {}).get("name"),
+                             "arguments": str(c.get("function", {}).get("arguments"))[:300]}
+                            for m in record.get("transcript", []) if isinstance(m, dict) and m.get("role") == "assistant"
+                            for c in (m.get("tool_calls") or [])
+                        ],
+                        "done": done,
+                        "total": total,
+                    }
+                )
+            except Exception:  # noqa: BLE001 - a UI callback must never break a check
+                pass
+        return record
 
     tasks = [one(a, i) for a in suite for i in range(trials_per_attack)]
     records = await asyncio.gather(*tasks)
@@ -242,12 +293,14 @@ def run_suite(
     ollama_model: str | None = None,
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    progress: Callable[[dict], None] | None = None,
 ) -> dict:
     """Synchronous wrapper around ``run_suite_async``."""
     return asyncio.run(
         run_suite_async(
             config,
             suite,
+            progress=progress,
             mode=mode,
             trials_per_attack=trials_per_attack,
             concurrency=concurrency,

@@ -24,7 +24,8 @@ DEFAULT_USER_TASK = (
 
 EMAIL_CARRIER_ID = "email-004"
 DOC_CARRIER_ID = "doc-004"
-VALID_CHANNELS = ("user", "email", "document")
+VALID_CHANNELS = ("user", "email", "document", "tool_description")
+POISONED_TOOL = "search_docs"  # the tool whose description carries a tool_description attack
 
 BASE_INBOX: list[dict] = [
     {
@@ -131,6 +132,24 @@ class Environment:
     attack: dict | None = None
     outbox: list[dict] = field(default_factory=list)
     trial_id: str = ""
+    tool_description_injection: str | None = None
+    actions: list[dict] = field(default_factory=list)  # sensitive tool calls (e.g. vendor bank update)
+
+    def poison_tool_schemas(self, tool_schemas: list) -> list:
+        """Return deep copies of the schemas with the attack appended to the poisoned tool's description.
+
+        No-op unless this environment carries a ``tool_description`` attack. This models
+        tool poisoning: malicious instructions hidden in a (third-party / MCP) tool's own
+        description, which every agent reads before it reads any data.
+        """
+        schemas = copy.deepcopy(list(tool_schemas))
+        if not self.tool_description_injection:
+            return schemas
+        for schema in schemas:
+            fn = schema.get("function", schema)
+            if fn.get("name") == POISONED_TOOL:
+                fn["description"] = (fn.get("description", "") + "\n\n" + self.tool_description_injection).strip()
+        return schemas
 
     def email_ids(self) -> list[str]:
         """Return inbox email ids in order."""
@@ -159,6 +178,8 @@ class Environment:
             return None
         if payload in self.user_message:
             return payload
+        if self.tool_description_injection and payload in self.tool_description_injection:
+            return payload
         for e in self.inbox:
             if payload in e.get("body", ""):
                 return payload
@@ -173,6 +194,7 @@ def build_environment(attack: dict | None = None, trial_id: str = "") -> Environ
     inbox = copy.deepcopy(BASE_INBOX)
     docs = copy.deepcopy(BASE_DOCS)
     user_message = DEFAULT_USER_TASK
+    tool_injection = None
     attack_copy = copy.deepcopy(attack) if attack is not None else None
     if attack_copy is not None:
         channel = attack_copy.get("channel")
@@ -187,6 +209,8 @@ def build_environment(attack: dict | None = None, trial_id: str = "") -> Environ
             for d in docs:
                 if d["id"] == DOC_CARRIER_ID:
                     d["content"] = d["content"] + "\n\n" + payload
+        elif channel == "tool_description":
+            tool_injection = payload
         else:
             raise ValueError(f"Unknown attack channel {channel!r}; expected one of {VALID_CHANNELS}")
     return Environment(
@@ -196,4 +220,5 @@ def build_environment(attack: dict | None = None, trial_id: str = "") -> Environ
         attack=attack_copy,
         outbox=[],
         trial_id=trial_id,
+        tool_description_injection=tool_injection,
     )

@@ -100,12 +100,13 @@ def init_cmd() -> None:
 )
 @click.option("--config", "config_path", required=True, help="Candidate config YAML.")
 @click.option("--baseline", "baseline_path", default=DEFAULT_BASELINE, show_default=True, help="Baseline config YAML.")
-@click.option("--mode", type=click.Choice(["offline", "ollama"]), default="offline", show_default=True)
+@click.option("--mode", type=click.Choice(["offline", "ollama", "bedrock"]), default="offline", show_default=True)
 @click.option("--trials", type=click.IntRange(min=1), default=DEFAULT_TRIALS_PER_ATTACK, show_default=True,
               help="Trials per attack.")
 @click.option("--concurrency", type=click.IntRange(min=1), default=DEFAULT_CONCURRENCY, show_default=True)
 @click.option("--no-cache", is_flag=True, help="Ignore and do not write the trial cache.")
-@click.option("--ollama-model", default=None, help="Override the Ollama model name.")
+@click.option("--model", "--ollama-model", "ollama_model", default=None,
+              help="Override the model name (Ollama model tag or Bedrock model id / inference profile).")
 @click.option("--no-attribution", is_flag=True, help="Skip per-change attribution.")
 def check_cmd(config_path, baseline_path, mode, trials, concurrency, no_cache, ollama_model, no_attribution) -> None:
     try:
@@ -152,6 +153,9 @@ def check_cmd(config_path, baseline_path, mode, trials, concurrency, no_cache, o
         click.echo("Attribution: skipped (--no-attribution).")
     else:
         click.echo("Attribution: no changes between baseline and candidate.")
+    interaction = result["attribution"].get("interaction") or {}
+    if interaction.get("flag"):
+        click.echo(interaction["message"])
     click.echo(f"Ledger: check_run {result['ledger']['check_entry_hash'][:16]}, "
                f"gate_decision {result['ledger']['decision_entry_hash']} (index {result['ledger']['decision_index']})")
     if decision["decision"] == "REVIEW":
@@ -179,7 +183,7 @@ def verify_cmd(chain_path, key_path) -> None:
 @cli.command("pack", help="Generate a Markdown + HTML evidence pack from the latest check (runs one if needed).")
 @click.option("--config", "config_path", default=None, help="Candidate config (re-runs check if it differs from latest).")
 @click.option("--baseline", "baseline_path", default=None, help="Baseline config (re-runs check if it differs).")
-@click.option("--mode", type=click.Choice(["offline", "ollama"]), default="offline", show_default=True)
+@click.option("--mode", type=click.Choice(["offline", "ollama", "bedrock"]), default="offline", show_default=True)
 @click.option("--trials", type=click.IntRange(min=1), default=DEFAULT_TRIALS_PER_ATTACK, show_default=True)
 def pack_cmd(config_path, baseline_path, mode, trials) -> None:
     try:
@@ -217,10 +221,18 @@ def override_cmd(reason, actor, force) -> None:
 @click.option("--once", is_flag=True, help="Run a single pass and exit.")
 @click.option("--iterations", type=click.IntRange(min=1), default=None, help="Stop after N runs.")
 @click.option("--max-age-hours", type=click.FloatRange(min=0), default=DEFAULT_MAX_AGE_HOURS, show_default=True)
-@click.option("--mode", type=click.Choice(["offline", "ollama"]), default="offline", show_default=True)
+@click.option("--mode", type=click.Choice(["offline", "ollama", "bedrock"]), default="offline", show_default=True)
 @click.option("--trials", type=click.IntRange(min=1), default=DEFAULT_TRIALS_PER_ATTACK, show_default=True)
-@click.option("--ollama-model", default=None)
-def monitor_cmd(config_path, interval, once, iterations, max_age_hours, mode, trials, ollama_model) -> None:
+@click.option("--model", "--ollama-model", "ollama_model", default=None,
+              help="Override the model name (Ollama model tag or Bedrock model id / inference profile).")
+@click.option("--alert-jsonl", default=None,
+              help="Append each alert as a JSON line to this file (SIEM log shipper friendly). "
+                   "Env: AGENTGATE_ALERT_JSONL.")
+@click.option("--alert-webhook", default=None,
+              help="POST each alert as JSON to this URL (Slack / PagerDuty / SOAR intake). "
+                   "Env: AGENTGATE_ALERT_WEBHOOK.")
+def monitor_cmd(config_path, interval, once, iterations, max_age_hours, mode, trials, ollama_model,
+                alert_jsonl, alert_webhook) -> None:
     try:
         run_monitor_loop(
             config_path=config_path,
@@ -231,6 +243,8 @@ def monitor_cmd(config_path, interval, once, iterations, max_age_hours, mode, tr
             trials_per_attack=trials,
             max_age_hours=max_age_hours,
             ollama_model=ollama_model,
+            alert_jsonl=alert_jsonl,
+            alert_webhook=alert_webhook,
         )
     except KeyboardInterrupt:
         click.echo("Monitor stopped.")

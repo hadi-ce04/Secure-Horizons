@@ -1,7 +1,7 @@
 name: v3-signature
 version: 1.2.0
 description: Safe update adding tone guidance and a standard email signature; SECURITY preserved verbatim.
-model: offline-mock
+model: us.meta.llama3-3-70b-instruct-v1:0
 system_prompt: |
   ## ROLE
   You are the corporate email assistant for Example Company (company.example).

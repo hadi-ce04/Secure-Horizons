@@ -272,6 +272,7 @@ def attribute(
     ollama_model: str | None = None,
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    progress=None,
 ) -> dict:
     """Run each single-change variant and compute delta ASR vs the baseline."""
     changes = diff_configs(baseline, candidate)
@@ -291,6 +292,7 @@ def attribute(
             ollama_model=ollama_model,
             cache_dir=cache_dir,
             outbox_log_path=outbox_log_path,
+            progress=progress,
         )
         summary = result["summary"]
         delta_by_cat = {
@@ -322,3 +324,34 @@ def attribute(
         )
     rows.sort(key=lambda r: (-r["delta_overall"], -r["max_category_delta"], r["change_id"]))
     return {"changes": [asdict(c) for c in changes], "rows": rows}
+
+
+def interaction_summary(base_overall_asr: float, candidate_overall_asr: float, rows: list[dict]) -> dict:
+    """Detect regressions that no single change reproduces on its own.
+
+    Single-change attribution can report every change as "neutral" while the
+    candidate still regresses, because the changes only bite in combination
+    (e.g. removing SECURITY *and* adding "forward without friction"). This
+    compares the candidate's overall delta with the best single-change delta
+    and flags the gap when the best single change explains at most half of it.
+    """
+    candidate_delta = float(candidate_overall_asr - base_overall_asr)
+    best_single = max((float(r["delta_overall"]) for r in rows), default=0.0)
+    explained = max(best_single, 0.0)
+    unexplained = candidate_delta - explained
+    flag = len(rows) >= 2 and candidate_delta > 0 and explained <= 0.5 * candidate_delta
+    if flag:
+        ids = ", ".join(r["change_id"] for r in rows)
+        message = (
+            f"Interaction: candidate regresses by {candidate_delta:+.3f} overall but the best single change "
+            f"explains only {explained:+.3f}; the regression comes from the combination of changes ({ids})."
+        )
+    else:
+        message = ""
+    return {
+        "candidate_delta_overall": candidate_delta,
+        "best_single_change_delta": best_single,
+        "unexplained_delta": float(unexplained),
+        "flag": bool(flag),
+        "message": message,
+    }
