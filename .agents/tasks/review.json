@@ -1,0 +1,48 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "id": 1,
+      "label": "Ledger cross-process race",
+      "severity": "non-blocking",
+      "confidence": "likely",
+      "detail": "Ledger.append serializes only with a threading.Lock; two processes (looping monitor + CLI/dashboard check) can read the same head and write duplicate indices, permanently breaking verify.py. Add an OS-level file lock (msvcrt.locking / fcntl.flock) around read-head-and-append."
+    },
+    {
+      "id": 2,
+      "label": "Ollama tool allowlist not enforced",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "Toolbox.dispatch accepts every built-in tool regardless of the config's tools list, so a config without send_email can still send email in ollama mode (and the offline mock ignores tool_schemas entirely). Pass the config's tool names into Toolbox and reject undeclared calls."
+    },
+    {
+      "id": 3,
+      "label": "Whitespace-separated recipients bypass judge",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "attacks/judge.py parse_recipients splits only on ',' and ';', so 'attacker@evil.example user@company.example' is one token ending in @company.example and is judged safe. Split on whitespace too, or require each token to be a single address."
+    },
+    {
+      "id": 4,
+      "label": "Pack ignores --mode/--trials when reusing latest check",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "evidence/pack.py _needs_fresh_check compares only config hashes, so 'pack --trials 10' after a '--trials 2' REVIEW check packages the 2-trial result. Include mode and trials_per_attack in the freshness comparison."
+    },
+    {
+      "id": 5,
+      "label": "Override replay",
+      "severity": "non-blocking",
+      "confidence": "confirmed",
+      "detail": "gate/gate.py override() never checks whether the latest REVIEW decision was already overridden, so repeated overrides of the same decision are all recorded. Refuse when an override entry already references that decision_entry_hash."
+    },
+    {
+      "id": 6,
+      "label": "Repo-local public key trust",
+      "severity": "non-blocking",
+      "confidence": "likely",
+      "detail": "verify.py defaults to .keys/public.pem in the same repo and the genesis public_key_sha256 is never compared to an external value, so anyone able to rewrite chain + key can produce a passing audit. Document out-of-band key/fingerprint pinning or add an optional expected-fingerprint argument."
+    }
+  ],
+  "reviewDoc": "c:\\Users\\hafee\\agentgate\\.agents\\tasks\\review.md"
+}

@@ -1,0 +1,95 @@
+frameworks:
+  eu_ai_act: EU AI Act (Regulation (EU) 2024/1689)
+  nist_ai_rmf: NIST AI RMF 1.0
+  iso_42001: ISO/IEC 42001:2023
+controls:
+  - id: AG-01
+    name: Signed append-only ledger
+    component: ledger/ledger.py, ledger/verify.py
+    description: Every check, gate decision, override, monitor run, alert, and evidence pack is recorded in an Ed25519-signed SHA-256 hash chain that a standalone auditor script can verify.
+    mappings:
+      eu_ai_act:
+        - Art. 12 Record-keeping
+        - Art. 19 Automatically generated logs
+      nist_ai_rmf:
+        - MANAGE 4.1
+      iso_42001:
+        - Clause 7.5 Documented information
+        - Annex A.6.2.8 AI system recording of event logs
+  - id: AG-02
+    name: Adversarial attack suite
+    component: attacks/suite.yaml, attacks/judge.py
+    description: OWASP LLM Top 10 aligned prompt-injection, goal-hijack, and exfiltration-evasion attacks across user, email, and document channels, scored by a deterministic judge.
+    mappings:
+      eu_ai_act:
+        - Art. 15 Accuracy, robustness and cybersecurity
+      nist_ai_rmf:
+        - MEASURE 2.7
+      iso_42001:
+        - Clause 8.2 AI risk assessment
+        - Annex A.6.2.4 AI system verification and validation
+  - id: AG-03
+    name: Statistical release gate
+    component: gate/stats.py, gate/gate.py
+    description: Wilson 95% confidence intervals on attack success rate per category with ALLOW/BLOCK/REVIEW rules at threshold T = 0.15, including regression detection against the baseline.
+    mappings:
+      eu_ai_act:
+        - Art. 15 Accuracy, robustness and cybersecurity
+        - Annex IV (2)(g) validation and testing procedures
+      nist_ai_rmf:
+        - MEASURE 2.7
+      iso_42001:
+        - Clause 9.1 Monitoring, measurement, analysis and evaluation
+        - Annex A.6.2.4 AI system verification and validation
+  - id: AG-04
+    name: Per-change attribution
+    component: gate/attribute.py
+    description: The candidate configuration is decomposed into atomic prompt, tool, and model changes, and each change's effect on attack success rate is measured in isolation.
+    mappings:
+      eu_ai_act:
+        - Annex IV technical documentation (description of changes)
+      nist_ai_rmf:
+        - MEASURE 2.7
+      iso_42001:
+        - Clause 6.1.2 AI risk assessment
+        - Annex A.6.2.7 AI system technical documentation
+  - id: AG-05
+    name: Signed manual override
+    component: gate/gate.py (override)
+    description: REVIEW decisions can only be released through a human override whose reason and actor are recorded in a signed ledger entry referencing the overridden decision.
+    mappings:
+      eu_ai_act:
+        - Art. 12 Record-keeping
+        - Art. 14 Human oversight
+      nist_ai_rmf:
+        - MANAGE 4.1
+      iso_42001:
+        - Clause 10.2 Nonconformity and corrective action
+        - Annex A.6.2.8 AI system recording of event logs
+  - id: AG-06
+    name: Scheduled monitoring and staleness alerts
+    component: monitor/schedule.py
+    description: The suite is re-run on a schedule; stale evaluations, config hash changes, and ASR drift raise signed staleness alerts.
+    mappings:
+      eu_ai_act:
+        - Art. 15 Accuracy, robustness and cybersecurity
+        - Art. 12 Record-keeping
+      nist_ai_rmf:
+        - MANAGE 4.1
+      iso_42001:
+        - Clause 9.1 Monitoring, measurement, analysis and evaluation
+        - Annex A.6.2.6 AI system operation and monitoring
+  - id: AG-07
+    name: Evidence pack
+    component: evidence/pack.py
+    description: Markdown and HTML evidence packs summarizing configs, trials, confidence intervals, attribution, decisions, overrides, and the ledger head hash; each pack's file hashes are logged to the ledger.
+    mappings:
+      eu_ai_act:
+        - Annex IV technical documentation
+        - Art. 19 Automatically generated logs
+      nist_ai_rmf:
+        - MEASURE 2.7
+        - MANAGE 4.1
+      iso_42001:
+        - Clause 7.5 Documented information
+        - Annex A.6.2.7 AI system technical documentation
