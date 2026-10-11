@@ -199,6 +199,12 @@ Ollama is also supported (`--mode ollama`). Tests: `python -m unittest discover 
 Full mapping in `evidence/mapping.yaml`; threat coverage: OWASP Agentic ASI01,
 ASI02, ASI06; MITRE ATLAS AML.T0051.000/.001, AML.T0057; NIST CSF 2.0 Govern, Detect.
 
+## Legal note
+
+Evidence packs *support* evidence for EU AI Act Articles 12, 14, 15, 19 and
+Annex IV, NIST AI RMF and ISO/IEC 42001. They are not legal advice and not a
+certification. See `LICENSE` for the licence of this repository.
+
 ## Credits
 
 Models via Amazon Bedrock (Meta Llama 3.3 70B, Amazon Nova Micro / Lite,
