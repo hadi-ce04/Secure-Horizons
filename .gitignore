@@ -8,3 +8,7 @@ ledger/*.lock
 evidence/packs/*
 !evidence/packs/.gitkeep
 .env
+
+# Office lock files
+~$*
+**/~$*
