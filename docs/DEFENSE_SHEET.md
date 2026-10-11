@@ -1,6 +1,6 @@
 # Defense Sheet: Team 3, AgentGate
 
-_Required deliverable, **1 page**, Secure Horizons, ESSEC, 10-11 Oct 2026. Repo: github.com/hadi-ce04/agentguard_
+_Required deliverable, **1 page**, Secure Horizons, ESSEC, 10-11 Oct 2026. Repo: github.com/hadi-ce04/agentgate_
 
 **Track:** 3, Uncharted Frontiers, area 3 *Continuous compliance and tamper-proof evidence* · **Defender we help:** the platform or compliance owner who must approve every change to an AI agent and prove, continuously, that it stays robust · **Team 3:** Jonathan Vinton, Abdul Hadi, Stephan Kenmegne, Abderrahim Bahraoui
 

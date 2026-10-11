@@ -46,7 +46,7 @@ rules. Every command below is PowerShell 5.1 safe (one per line, no `&&`).
     cd $env:TEMP
     git clone "C:\Users\Jonathan Vinton\Desktop\Claude Repositories\Hackathons\Hadii\agentguard" agentgate-fresh
     ```
-    If Hadi has pushed, use `git clone https://github.com/hadi-ce04/agentguard.git agentgate-fresh` instead.
+    If Hadi has pushed, use `git clone https://github.com/hadi-ce04/agentgate.git agentgate-fresh` instead.
 
 ## Shot list and narration
 
