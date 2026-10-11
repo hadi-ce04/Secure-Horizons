@@ -3,6 +3,7 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Tests: 122 passing](https://img.shields.io/badge/tests-122%20passing-brightgreen)
 
 **A release gate for AI agent configurations.**
+
 Every change to an agent's
 system prompt, model or tools is attacked before it ships, on the real model;
 statistically significant regressions are blocked; the responsible change is
