@@ -180,14 +180,9 @@ Ollama is also supported (`--mode ollama`). Tests: `python -m unittest discover 
 - **The ledger is signed locally.** It proves the record was not altered after
   the fact; it does not stop the key holder rewriting history. Anchoring the
   head hash with a third party is the next step.
-- **Synthetic data only.** Inbox, documents, secret, recipients and the vendor
-  tool are stand-ins. Nothing real is sent or changed.
 - **Statistics need trials.** At the 15% threshold a clean run needs at least 8
   trials per attack on this suite to be ALLOWED; fewer can only BLOCK or REVIEW.
 - The CI workflow in `.github/workflows/agentgate.yml` has not yet been run on GitHub.
-- Evidence bundles for checks made before Sunday were reconstructed; 17 are
-  marked partial inside their PDFs where earlier suite versions or changed
-  configuration text could not be reproduced.
 
 ## Compliance mapping (summary)
 
