@@ -50,7 +50,7 @@ _Measured on: Llama 3.3 70B and Amazon Nova Micro via Amazon Bedrock, 20 trials 
 |---|---|
 | Regressions caught (seeded changes that measurably weaken the agent) | 5 of 5 on Llama; 4 of 4 that exist on Nova (v4 only breaks Llama) |
 | False blocks on benign changes | **0 of 4** (tone, signature, formatting, delegation section) |
-| Headline case v7: one tool granted, every security rule intact | BLOCK; the poisoned tool description changed the IBAN in **20 of 20** trials on Llama; cause attributed to `tool_added` on both models |
+| Headline case v7: one tool granted, every security rule intact | BLOCK; the poisoned tool description changed the IBAN in **20 of 20** trials on Llama; attribution: the tool grant alone regresses on both models |
 | Interaction detected (v2: SECURITY removed + "forward without friction") | Alone: +1.3 pts and +0 pts, both pass; together 32% on Llama (v8: 51%) |
 | Time to decide / time to evidence | About 4 min for 320 trials at concurrency 8; PDF pack in under 10 s, file hashes logged in the ledger |
 | Tamper-evidence | 97 signed entries verified offline; a one-byte change is detected at the exact entry |

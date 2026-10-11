@@ -91,7 +91,7 @@ chart and the attribution table.
 
 > **Say:** "Blocked. Not because an attack succeeded once, but because the
 > ninety-five percent interval for tool misuse sits entirely above fifteen
-> percent. And it names the cause: the tool grant, not the prompt."
+> percent. And it names what caused it: the tool grant alone regresses on both models."
 
 Editing note: speed this shot up 3x between the Run click and the first
 breach line, then again between the first breach and the verdict (see
