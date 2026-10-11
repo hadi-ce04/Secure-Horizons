@@ -19,7 +19,7 @@ code { font-family: Consolas, monospace; font-size: 7.6pt; }
 </style></head><body>
 <h1>Defense Sheet: Team 3, AgentGate</h1>
 <p class="meta">Required deliverable, 1 page. Secure Horizons, ESSEC, 10-11 Oct 2026. Repo: github.com/hadi-ce04/agentguard</p>
-<div class="strip"><b>Track:</b> 3, Uncharted Frontiers, area 3 <i>Continuous compliance and tamper-proof evidence</i> &middot; <b>Defender we help:</b> the platform or compliance owner who must approve every change to an AI agent and prove, continuously, that it stays robust &middot; <b>Team 3:</b> Jonathan Vinton, Abdul Hadi, Stephan Kenmegne</div>
+<div class="strip"><b>Track:</b> 3, Uncharted Frontiers, area 3 <i>Continuous compliance and tamper-proof evidence</i> &middot; <b>Defender we help:</b> the platform or compliance owner who must approve every change to an AI agent and prove, continuously, that it stays robust &middot; <b>Team 3:</b> Jonathan Vinton, Abdul Hadi, Stephan Kenmegne, Abderrahim Bahraoui</div>
 
 <h2>Threat scenario addressed</h2>
 <p>A company runs an LLM email assistant with tools (read mail, search documents, send mail and, after a change, update a supplier's bank account). Attackers plant instructions wherever the assistant reads: the user's request, an inbox email, an internal document, or a tool's own description (tool poisoning, as a malicious MCP server delivers it). Goals: exfiltrate the inbox or a secret to an outside address, or move money by changing an IBAN. The change that opens the hole looks innocuous in code review: a softened rule, a "forward promptly" line, or simply granting a tool with every security rule intact. Nobody tests the change on the real model, and annual audits cannot keep up with weekly configuration changes.</p>
