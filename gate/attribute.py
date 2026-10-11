@@ -273,6 +273,7 @@ def attribute(
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
     progress=None,
+    write_records: bool = True,
 ) -> dict:
     """Run each single-change variant and compute delta ASR vs the baseline."""
     changes = diff_configs(baseline, candidate)
@@ -293,6 +294,7 @@ def attribute(
             cache_dir=cache_dir,
             outbox_log_path=outbox_log_path,
             progress=progress,
+            write_records=write_records,
         )
         summary = result["summary"]
         delta_by_cat = {

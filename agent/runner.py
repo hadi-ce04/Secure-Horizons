@@ -55,11 +55,17 @@ BEDROCK_UNAVAILABLE_MESSAGE = (
 )
 
 
-def load_dotenv(path: Path | str = DOTENV_PATH) -> int:
-    """Load ``KEY=value`` lines from ``path`` into ``os.environ`` (existing vars win).
+_DOTENV_INJECTED: set[str] = set()
 
-    Only ``AWS_*`` and ``AGENTGATE_*`` keys are loaded. Values are never logged.
-    Returns the number of keys set.
+
+def load_dotenv(path: Path | str = DOTENV_PATH) -> int:
+    """Load ``KEY=value`` lines from ``path`` into ``os.environ``.
+
+    Variables that were already present in the real environment win. Variables
+    that a previous ``load_dotenv`` call injected are refreshed, so a
+    long-running process (the dashboard) picks up rotated credentials on the
+    next run without a restart. Only ``AWS_*`` and ``AGENTGATE_*`` keys are
+    loaded; values are never logged. Returns the number of keys set or updated.
     """
     path = Path(path)
     if not path.exists():
@@ -76,9 +82,11 @@ def load_dotenv(path: Path | str = DOTENV_PATH) -> int:
         if not (key.startswith("AWS_") or key.startswith("AGENTGATE_")):
             continue
         value = value.strip().strip('"').strip("'")
-        if key not in os.environ:
-            os.environ[key] = value
-            count += 1
+        if key not in os.environ or key in _DOTENV_INJECTED:
+            if os.environ.get(key) != value:
+                os.environ[key] = value
+                count += 1
+            _DOTENV_INJECTED.add(key)
     return count
 
 

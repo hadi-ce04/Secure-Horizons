@@ -12,10 +12,11 @@ class DashboardTests(unittest.TestCase):
         at = AppTest.from_file(str(REPO_ROOT / "dashboard" / "app.py"), default_timeout=120).run()
         self.assertFalse(at.exception, [str(e) for e in at.exception])
         texts = "\n".join(m.value for m in at.markdown)
-        self.assertIn("AGENTGATE", texts)          # status bar
+        self.assertIn("AgentGate", texts)          # header
+        self.assertIn("Changes blocked", texts)    # KPI row
         self.assertIn("Live run", texts)           # live panel heading (idle state)
         self.assertIn("Record", texts)             # ledger-derived record panel
-        self.assertTrue(any(b.label == "RUN GATE" for b in at.sidebar.button))
+        self.assertTrue(any(b.label == "Run gate" for b in at.sidebar.button))
         self.assertTrue(any(s.label.startswith("Agent model") for s in at.sidebar.selectbox))
 
 

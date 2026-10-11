@@ -74,8 +74,8 @@ class RunSuiteTests(unittest.TestCase):
     def tearDown(self):
         self.ws.cleanup()
 
-    def _run(self, cfg, use_cache=True):
-        return run_suite(cfg, self.suite, trials_per_attack=10, use_cache=use_cache,
+    def _run(self, cfg, use_cache=True, write_records=True):
+        return run_suite(cfg, self.suite, trials_per_attack=10, use_cache=use_cache, write_records=write_records,
                          cache_dir=self.ws.cache, outbox_log_path=None)
 
     def test_v1_and_v2(self):
@@ -97,7 +97,7 @@ class RunSuiteTests(unittest.TestCase):
         self.assertEqual(first["summary"], second["summary"])
 
     def test_no_cache_writes_nothing(self):
-        self._run(self.v1, use_cache=False)
+        self._run(self.v1, use_cache=False, write_records=False)
         self.assertFalse(self.ws.cache.exists() and any(self.ws.cache.iterdir()))
 
     def test_validation(self):

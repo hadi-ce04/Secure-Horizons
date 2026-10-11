@@ -16,7 +16,7 @@ from jinja2 import Environment as JinjaEnvironment
 
 from agent.tools import DEFAULT_OUTBOX_LOG
 from gate.config import load_config
-from gate.gate import DEFAULT_BASELINE, DEFAULT_LATEST_PATH, load_latest_check, run_check
+from gate.gate import DEFAULT_BASELINE, DEFAULT_LATEST_PATH, GateError, load_check, load_latest_check, run_check
 from gate.run import DEFAULT_CACHE_DIR, DEFAULT_TRIALS_PER_ATTACK
 from ledger.ledger import Ledger, get_default_ledger, utc_now_iso
 
@@ -295,6 +295,35 @@ def render_pack(check: dict, mapping: dict, ledger_head: str | None, generated_a
     return md, html
 
 
+def _verify_chain(ledger: Ledger) -> tuple[int, str]:
+    """Run the standalone auditor on the ledger; (exit code, last output line)."""
+    import subprocess
+    import sys
+
+    verify = REPO_ROOT / "ledger" / "verify.py"
+    try:
+        proc = subprocess.run([sys.executable, str(verify), str(ledger.chain_path), str(ledger.public_key_path)],
+                              capture_output=True, text=True, cwd=str(REPO_ROOT), timeout=120)
+        out = (proc.stdout + proc.stderr).strip().splitlines()
+        return proc.returncode, (out[-1] if out else "")
+    except (OSError, subprocess.SubprocessError) as exc:  # the pack must still be produced
+        return 3, f"verification could not run: {type(exc).__name__}"
+
+
+def _attach_override(check: dict, ledger: Ledger) -> dict:
+    """Fill in ``check['override']`` from the ledger if a signed override references this decision."""
+    if check.get("override"):
+        return check
+    target = check["ledger"]["decision_entry_hash"]
+    for e in ledger.read_all():
+        if e["entry_type"] == "override" and e["payload"].get("decision_entry_hash") == target:
+            check = dict(check)
+            check["override"] = {"actor": e["payload"].get("actor"), "reason": e["payload"].get("reason"),
+                                 "entry_hash": e["entry_hash"], "index": e["index"], "timestamp": e.get("timestamp")}
+            break
+    return check
+
+
 def generate_pack(
     candidate_path=None,
     baseline_path=None,
@@ -305,28 +334,57 @@ def generate_pack(
     packs_dir=PACKS_DIR,
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    check_ref=None,
+    pdf: bool = True,
+    checks_dir=None,
 ) -> dict:
-    """Generate an evidence pack from the latest check (running one if needed)."""
+    """Generate an evidence pack (PDF + Markdown + HTML) for one check.
+
+    ``check_ref`` selects a historical check (check_run entry hash prefix or
+    ledger index); otherwise the latest check is used, running a new one if the
+    requested configs differ from it. The pack is written to
+    ``evidence/packs/<UTC stamp>_<candidate hash[:12]>/`` and its files' SHA-256
+    hashes are recorded in a ``pack_generated`` ledger entry.
+    """
     ledger = ledger or get_default_ledger()
-    latest = load_latest_check(latest_path)
-    if _needs_fresh_check(latest, candidate_path, baseline_path):
-        latest = run_check(
-            candidate_path or DEFAULT_BASELINE,
-            baseline_path or DEFAULT_BASELINE,
-            mode=mode,
-            trials_per_attack=trials_per_attack,
-            ledger=ledger,
-            cache_dir=cache_dir,
-            latest_path=latest_path,
-            outbox_log_path=outbox_log_path,
-        )
+    if check_ref is not None:
+        try:
+            check = load_check(check_ref, ledger=ledger, checks_dir=checks_dir)
+        except GateError:
+            # A check recorded before bundles existed (or by an older process): rebuild
+            # what can be rebuilt from the ledger, configs and trial records, then retry.
+            from gate.gate import backfill_bundles
+
+            backfill_bundles(ledger=ledger, cache_dir=cache_dir, checks_dir=checks_dir)
+            check = load_check(check_ref, ledger=ledger, checks_dir=checks_dir)
+    else:
+        check = load_latest_check(latest_path)
+        if _needs_fresh_check(check, candidate_path, baseline_path):
+            run_check(
+                candidate_path or DEFAULT_BASELINE,
+                baseline_path or DEFAULT_BASELINE,
+                mode=mode,
+                trials_per_attack=trials_per_attack,
+                ledger=ledger,
+                cache_dir=cache_dir,
+                latest_path=latest_path,
+                outbox_log_path=outbox_log_path,
+                checks_dir=checks_dir,
+            )
+            check = load_latest_check(latest_path)
+        # prefer the full evidence bundle for the latest check when it exists
+        try:
+            check = load_check(check["ledger"]["check_entry_hash"], ledger=ledger, checks_dir=checks_dir)
+        except GateError:
+            pass
+    check = _attach_override(check, ledger)
     mapping = load_mapping()
     ledger_head = ledger.head_hash()
     generated_at = utc_now_iso()
 
     packs_dir = Path(packs_dir)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    base_name = f"{stamp}_{latest['candidate']['hash'][:12]}"
+    base_name = f"{stamp}_{check['candidate']['hash'][:12]}"
     pack_dir = packs_dir / base_name
     suffix = 1
     while pack_dir.exists():
@@ -334,7 +392,7 @@ def generate_pack(
         pack_dir = packs_dir / f"{base_name}_{suffix}"
     pack_dir.mkdir(parents=True)
 
-    md, html = render_pack(latest, mapping, ledger_head, generated_at)
+    md, html = render_pack(check, mapping, ledger_head, generated_at)
     md_path = pack_dir / "pack.md"
     html_path = pack_dir / "pack.html"
     with open(md_path, "w", encoding="utf-8", newline="\n") as fh:
@@ -343,25 +401,44 @@ def generate_pack(
         fh.write(html)
     shas = {"pack.md": _sha256_file(md_path), "pack.html": _sha256_file(html_path)}
 
+    verify_result = _verify_chain(ledger)
+    pdf_path = None
+    if pdf:
+        from evidence.pdf import load_breach_examples, render_pdf  # local import keeps reportlab optional for md/html
+
+        try:
+            fingerprint = ledger.public_key_fingerprint()
+        except Exception:  # noqa: BLE001 - fingerprint is informational
+            fingerprint = None
+        breaches = load_breach_examples(check, cache_dir=(check.get("evidence") or {}).get("cache_dir") or cache_dir)
+        pdf_path = render_pdf(check, mapping, ledger.read_all(), verify_result, pack_dir / "pack.pdf",
+                              breaches=breaches, public_key_fingerprint=fingerprint)
+        shas["pack.pdf"] = _sha256_file(pdf_path)
+
     entry = ledger.append(
         "pack_generated",
         {
             "pack_dir": _display_path(pack_dir),
             "files": shas,
-            "candidate_hash": latest["candidate"]["hash"],
-            "baseline_hash": latest["baseline"]["hash"],
-            "decision": latest["decision"]["decision"],
-            "decision_entry_hash": latest["ledger"]["decision_entry_hash"],
+            "candidate_hash": check["candidate"]["hash"],
+            "baseline_hash": check["baseline"]["hash"],
+            "decision": check["decision"]["decision"],
+            "check_entry_hash": check["ledger"]["check_entry_hash"],
+            "decision_entry_hash": check["ledger"]["decision_entry_hash"],
             "ledger_head_at_generation": ledger_head,
+            "chain_verified_at_generation": verify_result[0] == 0,
         },
     )
     return {
         "pack_dir": str(pack_dir),
         "md_path": str(md_path),
         "html_path": str(html_path),
+        "pdf_path": str(pdf_path) if pdf_path else None,
         "sha256": shas,
         "ledger_entry_hash": entry["entry_hash"],
-        "decision": latest["decision"]["decision"],
+        "decision": check["decision"]["decision"],
+        "check_entry_hash": check["ledger"]["check_entry_hash"],
+        "verify": verify_result[1],
     }
 
 

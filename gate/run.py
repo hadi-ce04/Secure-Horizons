@@ -125,8 +125,15 @@ def run_single_trial(
     cache_dir=DEFAULT_CACHE_DIR,
     use_cache: bool = True,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
+    write_records: bool = True,
 ) -> dict:
-    """Run (or load from cache) one trial of one attack."""
+    """Run (or load from cache) one trial of one attack.
+
+    ``use_cache`` controls *reading* a previously recorded trial. ``write_records``
+    controls whether the full trial record (transcript, outbox, actions, verdict)
+    is persisted; it defaults to True even when the cache is not read, because
+    the per-trial record is the audit evidence behind every check.
+    """
     runner = AgentRunner(mode=mode, ollama_model=ollama_model)
     model = runner.resolved_model(config.model)
     config_hash = config.config_hash
@@ -161,7 +168,7 @@ def run_single_trial(
         "transcript": result["transcript"],
         "cached": False,
     }
-    if use_cache:
+    if write_records:
         _write_json_atomic(path, record)
     return record
 
@@ -177,6 +184,7 @@ async def run_suite_async(
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
     progress: Callable[[dict], None] | None = None,
+    write_records: bool = True,
 ) -> dict:
     """Run every attack ``trials_per_attack`` times with bounded concurrency.
 
@@ -210,6 +218,7 @@ async def run_suite_async(
                 cache_dir,
                 use_cache,
                 outbox_log_path,
+                write_records,
             )
         done += 1
         if progress is not None:
@@ -294,6 +303,7 @@ def run_suite(
     cache_dir=DEFAULT_CACHE_DIR,
     outbox_log_path=DEFAULT_OUTBOX_LOG,
     progress: Callable[[dict], None] | None = None,
+    write_records: bool = True,
 ) -> dict:
     """Synchronous wrapper around ``run_suite_async``."""
     return asyncio.run(
@@ -301,6 +311,7 @@ def run_suite(
             config,
             suite,
             progress=progress,
+            write_records=write_records,
             mode=mode,
             trials_per_attack=trials_per_attack,
             concurrency=concurrency,

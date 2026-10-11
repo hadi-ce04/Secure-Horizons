@@ -104,7 +104,9 @@ def init_cmd() -> None:
 @click.option("--trials", type=click.IntRange(min=1), default=DEFAULT_TRIALS_PER_ATTACK, show_default=True,
               help="Trials per attack.")
 @click.option("--concurrency", type=click.IntRange(min=1), default=DEFAULT_CONCURRENCY, show_default=True)
-@click.option("--no-cache", is_flag=True, help="Ignore and do not write the trial cache.")
+@click.option("--no-cache", is_flag=True,
+              help="Do not reuse recorded trials (every trial is a fresh model call). Trial records are still "
+                   "persisted as audit evidence.")
 @click.option("--model", "--ollama-model", "ollama_model", default=None,
               help="Override the model name (Ollama model tag or Bedrock model id / inference profile).")
 @click.option("--no-attribution", is_flag=True, help="Skip per-change attribution.")
@@ -163,6 +165,22 @@ def check_cmd(config_path, baseline_path, mode, trials, concurrency, no_cache, o
     sys.exit(EXIT_CODES[decision["decision"]])
 
 
+@cli.command("backfill", help="Reconstruct evidence bundles (evidence/checks/) for checks recorded before bundles existed, "
+                              "from the ledger, the config files and the per-trial records.")
+@click.option("--overwrite", is_flag=True, help="Rebuild bundles that already exist.")
+def backfill_cmd(overwrite) -> None:
+    from gate.gate import backfill_bundles
+
+    try:
+        res = backfill_bundles(overwrite=overwrite)
+    except (LedgerError, GateError, FileNotFoundError, ValueError) as exc:
+        click.echo(f"ERROR: {exc}", err=True)
+        sys.exit(EXIT_ERROR)
+    click.echo(f"bundles written: {res['written']}, already present: {res['skipped']}, partial (missing text, suite or trials): {len(res['partial'])}")
+    for h in res["partial"]:
+        click.echo(f"  partial: {h[:16]}")
+
+
 @cli.command("verify", help="Verify the ledger with the standalone ledger/verify.py auditor (exit code propagated).")
 @click.option("--chain", "chain_path", default=None, help="Chain JSONL path (default ledger/chain.jsonl).")
 @click.option("--key", "key_path", default=None, help="Public key PEM path (default .keys/public.pem).")
@@ -180,21 +198,30 @@ def verify_cmd(chain_path, key_path) -> None:
     sys.exit(proc.returncode)
 
 
-@cli.command("pack", help="Generate a Markdown + HTML evidence pack from the latest check (runs one if needed).")
+@cli.command("pack", help="Generate an evidence pack (PDF + Markdown + HTML) for a check: the latest by default, "
+                          "or any historical check with --check.")
+@click.option("--check", "check_ref", default=None,
+              help="Historical check to document: a check_run entry hash (prefix ok) or the ledger index of its "
+                   "check_run / gate_decision entry. Default: the latest check.")
 @click.option("--config", "config_path", default=None, help="Candidate config (re-runs check if it differs from latest).")
 @click.option("--baseline", "baseline_path", default=None, help="Baseline config (re-runs check if it differs).")
 @click.option("--mode", type=click.Choice(["offline", "ollama", "bedrock"]), default="offline", show_default=True)
 @click.option("--trials", type=click.IntRange(min=1), default=DEFAULT_TRIALS_PER_ATTACK, show_default=True)
-def pack_cmd(config_path, baseline_path, mode, trials) -> None:
+@click.option("--no-pdf", is_flag=True, help="Skip the PDF (Markdown + HTML only).")
+def pack_cmd(check_ref, config_path, baseline_path, mode, trials, no_pdf) -> None:
     try:
-        res = generate_pack(candidate_path=config_path, baseline_path=baseline_path, mode=mode, trials_per_attack=trials)
-    except (OllamaUnavailableError, FileNotFoundError, ValueError, LedgerError, RuntimeError) as exc:
+        res = generate_pack(candidate_path=config_path, baseline_path=baseline_path, mode=mode, trials_per_attack=trials,
+                            check_ref=check_ref, pdf=not no_pdf)
+    except (OllamaUnavailableError, FileNotFoundError, ValueError, LedgerError, GateError, RuntimeError) as exc:
         click.echo(f"ERROR: {exc}", err=True)
         sys.exit(EXIT_ERROR)
     click.echo(f"Evidence pack ({res['decision']}): {res['pack_dir']}")
-    click.echo(f"  pack.md   {res['md_path']}  sha256 {res['sha256']['pack.md']}")
-    click.echo(f"  pack.html {res['html_path']}  sha256 {res['sha256']['pack.html']}")
+    for name in ("pack.pdf", "pack.md", "pack.html"):
+        if name in res["sha256"]:
+            click.echo(f"  {name:9s} sha256 {res['sha256'][name]}")
     click.echo(f"Ledger: pack_generated {res['ledger_entry_hash']}")
+    if res.get("verify"):
+        click.echo(f"Chain at generation: {res['verify']}")
 
 
 @cli.command("override", help="Record a signed manual override of the latest REVIEW gate decision.")

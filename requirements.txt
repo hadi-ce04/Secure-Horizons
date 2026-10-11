@@ -8,3 +8,4 @@ ollama==0.6.3
 altair==6.3.0
 pandas==3.0.6
 boto3==1.43.111
+reportlab==5.0.1

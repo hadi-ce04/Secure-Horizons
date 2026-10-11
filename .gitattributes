@@ -1,0 +1,14 @@
+# Binary artefacts: never normalise line endings
+*.pdf binary
+*.png binary
+*.jpg binary
+*.pem binary
+
+# The ledger and evidence records are hashed/signed content: keep bytes exactly as written
+ledger/chain.jsonl -text
+ledger/archive/*.jsonl -text
+evidence/checks/*.json -text
+evidence/samples/*.jsonl -text
+
+# Everything else: text with LF in the repo
+* text=auto eol=lf
