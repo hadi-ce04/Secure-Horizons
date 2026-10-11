@@ -116,6 +116,9 @@ packs in `evidence/packs/`.
 ## Install and run
 
 Requirements: Python 3.10+ (developed on 3.13), no native dependencies.
+On Windows, clone into a short path (for example `C:\src\agentguard`) or run
+`git config --global core.longpaths true` first: evidence bundles are named by
+their 64-character hash and a deep folder can exceed the 260-character path limit.
 
 ```bash
 python -m venv .venv
